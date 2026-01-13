@@ -1,0 +1,187 @@
+
+import pandas as pd
+import numpy as np
+import geopandas as gpd
+import geodatasets
+import matplotlib
+import mapclassify
+import folium
+import bokeh
+import shapely
+import openpyxl
+import pgeocode
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+from folium.plugins import MarkerCluster
+from bokeh.embed import file_html
+from shapely.geometry import Point, Polygon
+import os
+
+pd.set_option('display.max_columns', None)
+
+v1 = gpd.read_file('C:/temp/lfsa000a21a_e.shp')
+print(v1.shape)
+type(v1)
+print(v1.head())
+
+v1.plot()
+
+plt.show()
+
+fsa_file = 'C:/temp/FSAtoRepMap.xlsx'
+
+fsa_map = pd.read_excel(fsa_file, sheet_name=0,
+                        header=0,
+                        index_col=False,
+                        keep_default_na=True)
+
+print(fsa_map.head())
+
+dataf = v1.merge(fsa_map, on='CFSAUID', how='left')
+geodataf = gpd.GeoDataFrame(dataf)
+
+print(dataf.head())
+print(geodataf.head())
+
+print(geodataf.shape)
+
+colors = {
+    "John Morris": "green",
+    "Katie Stephenson": "pink",
+    "Yves Gravel": "orange",
+    "Tanis Simpkins": "blue",
+    "Lyndsey Bernardo": "yellow",
+    "Andrea Brown": "red",
+    "Helen Huynh": "purple"
+}
+
+cmap = ListedColormap(list(colors.values()))
+
+geodataf.plot(column="SalesRep", cmap=cmap, legend=True)
+
+plt.show()
+plt.savefig('ONSalesRepMap.png')
+
+xlpath = 'C:/temp/geodatafile.xlsx'
+geodataf.to_excel(xlpath)
+
+m = folium.Map(zoom_start=4)
+
+m = geodataf.explore(
+    column="SalesRep",
+    tooltip=["FSA Code", "Rep", "Geographical Area",
+             "PY Net Sales", "YTD Net Sales", "PM Net Sales", "Number of Reps", "Customers", "MoM %Change"],
+    popup=["FSA Code", "PRNAME", "LANDAREA", "Rep", "Geographical Area",
+           "PY Net Sales", "YTD Net Sales", "Number of Reps", "Customers"],
+    cmap="tab20_r"
+)
+
+outfp = r"C:/temp/repgeomap.html"
+
+m.save(outfp)
+
+style_fnc = lambda x: {'fillColor': '#ffffff',
+                       'color':'#000000',
+                       'fillOpacity': 0.1,
+                       'weight': 0.15,
+                       'interactive':False}
+highlight_fnc = lambda x: {'fillColor': '#000000',
+                           'color':'#000000',
+                           'fillOpacity': 0.7,
+                           'weight': 0.05}
+interact = folium.features.GeoJson(
+    geodataf,
+    style_function=style_fnc,
+    control=False,
+    highlight_function=highlight_fnc,
+    tooltip=folium.features.GeoJsonTooltip(
+        fields=['FSA Code', 'Rep', 'PY Net Sales', 'YTD Net Sales', 'Number of Reps', 'Customers'],
+        style=("background-color: white; color: #333333; font-family: Calibri; font-size: 14px; padding: 10px")
+    )
+)
+
+outfp4 = r"C:/temp/repgeomap4.html"
+
+m.save(outfp4)
+
+# customer_file = 'C:/temp/PBIGeoMappingV2.xlsx'
+#
+# customer_map = pd.read_excel(customer_file, sheet_name=0,
+#                              header=0,
+#                              index_col=False,
+#                              keep_default_na=True)
+#
+# customer_map = customer_map[customer_map["LAT"].notna()]
+#
+# print(customer_map.shape)
+#
+# # nomi = pgeocode.Nominatim('ca')
+# # print(nomi.query_postal_code("M5T 2G2"))
+#
+# print(customer_map.head())
+#
+# geodataf2 = gpd.GeoDataFrame(
+#     customer_map, geometry=gpd.points_from_xy(customer_map.LONG, customer_map.LAT), crs="EPSG:4326"
+# )
+#
+# print(geodataf2.shape)
+#
+# geodataf2.explore(
+#     m=m,
+#     column="geometry",
+#     marker_kwds=dict(radius=8, fill=True),
+#     tooltip=["Name", "RepName"],
+#     tooltip_kwds=dict(labels=False),  # do not show column label in the tooltip
+#     legend=False,
+#     style_kwds=dict(color="black", fill="white"),
+#     name="geodataf2"
+# )
+#
+# folium.TileLayer("openstreetmap").add_to(m)
+# folium.LayerControl().add_to(m)
+#
+# outfp2 = r"C:/temp/repgeomap2.html"
+#
+# m.save(outfp2)
+
+fsa_latlong = 'C:/temp/AccountsFSACodeToSalesMap.xlsx'
+
+fsa_latlong = pd.read_excel(fsa_latlong, sheet_name=0,
+                        header=0,
+                        index_col=False,
+                        keep_default_na=True)
+
+print(fsa_latlong.head())
+
+locations = fsa_latlong[['Latitude', 'Longitude']]
+locationlist = locations.values.tolist()
+len(locationlist)
+print(locationlist[7])
+
+marker_cluster = MarkerCluster().add_to(m)
+
+m.add_child(marker_cluster)
+m.keep_in_front(marker_cluster)
+
+
+for point in range(0, len(locationlist)):
+    html = folium.Html(
+        f"""
+        <!DOCTYPE html>
+        <html>
+            <h5 style="font-family:Calibri"><strong>{fsa_latlong['Name'][point]}</strong></h5>
+            <h5 style="font-family:Calibri">Rep: {fsa_latlong['Rep'][point]}</h5>
+            <h5 style="font-family:Calibri">City: {fsa_latlong['City'][point]}</h5>
+            <h5 style="font-family:Calibri">Postal Code: {fsa_latlong['Postal Code'][point]}</h5>
+        </html>
+            """, script=True)
+
+    popup = folium.Popup(html,
+                         max_width=250)
+
+    folium.Marker(locationlist[point], popup=popup, icon=folium.Icon(color='darkblue', icon_color='white', icon='user-tie', angle=0, prefix='fa')).add_to(marker_cluster)
+
+outfp3 = r"C:/temp/repgeomap3.html"
+
+m.save(outfp3)
+
